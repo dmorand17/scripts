@@ -13,6 +13,29 @@
 # Example of how to retrieve an IP address (after running route_53upsert)
 #	frontend=$(nslookup frontend1.hbc-douglasm-e6430-graviton.ohop.io 2> /dev/null | sed -n -e '/graviton/,/Address:/p' | awk -n '/^Address: / { print $2}')
 
+# Additional logic to route based on OS
+case "$(uname -s)" in
+   Darwin)
+     echo 'Mac OS X'
+	 operating_sys='nix'
+     ;;
+   Linux)
+     echo 'Linux'
+	 operating_sys='nix'
+     ;;
+   CYGWIN*|MINGW32*|MSYS*)
+     echo 'MS Windows'
+	 operating_sys='win'
+     ;;
+   # Add here more strings to compare
+   # See correspondence table at the bottom of this answer
+   *)
+     echo 'other OS' 
+	 echo 'Unable to determine Operating system, exiting...'
+	 exit 1
+     ;;
+esac
+
 hostname=$(hostname)
 
 # Testing 
@@ -30,9 +53,8 @@ if [[ -z "$vpn_ip" ]]; then
 fi
 
 # puppet-master-0.22.0
-puppet_master='52.24.170.150'
-# puppet-master-0.18.0
-puppet_master_018='52.25.122.161'
+# Dynamically retrieves puppet master from the graviton configuration for the deployment
+puppet_master=$(ssh graviton-jump-host -- "cd ~/$solution; graviton config -p ec2 | sed -n 's/^.*puppet.master.address=//p'")
 
 # shared.cv2quofa3aoc.us-west-2.rds.amazonaws.com
 shared_db='52.27.229.29'
@@ -44,16 +66,22 @@ route_address(){
 
 	echo "Routing $1 [$2] -> $vpn_ip"
 	
-	# Windows Routing
-	route add $1 $vpn_ip &> /dev/null
-	
-	# Linux Routing
-	# route add $ip gw $vpn_ip 2> /dev/null
-	# sudo ip route add 99.99.99.99 dev eth0
-	# ip route add $ip 255.255.255.255 $vpn_ip 2> /dev/null
+	case "$operating_sys" in
+		win)
+			# Windows Routing
+			route add $1 $vpn_ip &> /dev/null
+		;;
+		nix)
+			# Linux Routing
+			# route add $ip gw $vpn_ip 2> /dev/null
+			# sudo ip route add 99.99.99.99 dev eth0
+			# ip route add $ip 255.255.255.255 $vpn_ip 2> /dev/null
+			ip route add $1 255.255.255.255 $vpn_ip 2> /dev/null
+		;;
+	esac
 	
 	if [ "$?" -ne "0" ]; then
-		echo -e "Unable to route $ip -> $vpn_ip"
+		echo -e "Unable to route $1 -> $vpn_ip"
 	fi
 }
 ######################## FUNCTIONS ########################
@@ -78,10 +106,8 @@ echo
 echo "-----------------------------------"
 echo "Routing shared instances..."
 echo "-----------------------------------"
-echo "Routing puppet-master $puppet_master -> $vpn_ip"
-route add $puppet_master $vpn_ip 2> /dev/null
-echo "Routing shared_db $shared_db -> $vpn_ip"
-route add $shared_db $vpn_ip 2> /dev/null
+route_address $puppet_master puppet_master
+route_address $shared_db shared.cv2quofa3aoc.us-west-2.rds.amazonaws.com
 echo
 echo "Running route53_upsert remotely..."
 ssh graviton-jump-host -- "cd ~/$solution; ./resources/scripts/route53_upsert" > route53_upsert.tmp
