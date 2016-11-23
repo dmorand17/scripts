@@ -10,3 +10,4 @@ logfilename=${scriptname%.*}
 
 #/home/dougie/scripts/change_perms.sh "/home/dougie/mybook/sorted/tv" > /home/dougie/scripts/logs/$logfilename-$DATE.log
 /home/dougie/scripts/change_perms.sh "/home/dougie/mybook/sorted/tv"
+/home/dougie/scripts/change_perms.sh "/home/dougie/toshiba5tb/media/tv"
