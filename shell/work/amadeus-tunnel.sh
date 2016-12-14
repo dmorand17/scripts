@@ -22,12 +22,13 @@
 # set -e
 
 ######################## FUNCTIONS ########################
+
 route_address(){
 	# Suppress any errors
 	# route add $2 $vpn_ip 2> /dev/null
 
 	echo "Routing $1 [$2] -> $vpn_ip"
-	
+
 	case "$operating_sys" in
 		win)
 			# Windows Routing
@@ -47,9 +48,9 @@ route_address(){
 			# sudo route add -host 54.35.189.129 -interface utun0
 			sudo route add -host $1 -interface $vpn_ip &> /dev/null
 		;;
-		
+
 	esac
-	
+
 	if [ "$?" -ne "0" ]; then
 		echo -e "Unable to route $1 -> $vpn_ip"
 		echo -e "Check to ensure the terminal is running with Admin privilege"
@@ -64,20 +65,20 @@ route_address(){
 if [[ $# -ne 2 ]]
 then
     echo "There are not enough parameters."
-    
+
 	echo "Must provide the following parameters:"
 	echo "	* solution directory on jumphost"
 	echo "	* VPN network identifier (retrieved from running netstat -nr and review the Interface List)"
 	echo
 	echo "  Example: amadeus-tunnel.sh 'rgrav/solution_ohop_username' 'Scottsdale VPN'"
-	
+
     exit 1
 fi
 echo
 echo "==================================================================================================="
 echo "                                         AMADEUS TUNNEL                                            "
 echo "==================================================================================================="
-echo 
+echo
 #echo -n "Operating system: "
 
 # Additional logic to route based on OS
@@ -97,7 +98,7 @@ case "$(uname -s)" in
    # Add here more strings to compare
    # See correspondence table at the bottom of this answer
    *)
-     #echo 'other OS' 
+     #echo 'other OS'
 	 echo 'Unable to determine Operating system, exiting...'
 	 exit 1
      ;;
@@ -105,7 +106,7 @@ esac
 
 hostname=$(hostname)
 
-# Testing 
+# Testing
 # hostname=testing
 
 solution=$1
@@ -127,6 +128,15 @@ puppet_master=$(ssh graviton-jump-host -- "cd ~/$solution; graviton config -p ec
 # shared.cv2quofa3aoc.us-west-2.rds.amazonaws.com
 # Loop over the list of shared_db ip addresses and route them
 shared_db=("52.27.229.29" "52.40.148.225" "52.42.9.133")
+shared_db_hostnames=("shared-12c.cv2quofa3aoc.us-west-2.rds.amazonaws.com")
+
+# Add to shared_db array
+for i in "${shared_db_hostnames[@]}"; do
+	echo -n "Resolving ip for $i"
+	ip=$(nslookup $i 2>/dev/null | sed -nr '/Name/,+1s|Address(es)?: *||p')
+	echo " ip: $ip"
+	shared_db+=($ip)
+done
 
 echo
 echo "==================================================================================================="
@@ -176,11 +186,11 @@ IFS=$'\n'
 for node in $solution_nodes; do
 	ip=$(echo "$node" | cut -d' ' -f1)
 	hostname=$(echo "$node" | cut -d' ' -f2)
-	
+
 	route_address $ip $hostname
 done
 
-rm route53_upsert.tmp 
+rm route53_upsert.tmp
 # graviton-status.tmp
 
 ########################### END MAIN ##############################
