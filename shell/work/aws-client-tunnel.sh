@@ -67,7 +67,7 @@ then
 	echo "	* Client to build routing for"
 	echo "	* VPN network identifier (retrieved from running netstat -nr and review the Interface List)"
 	echo
-	echo "  Example: amadeus-tunnel.sh 'rgrav/solution_ohop_username' 'Scottsdale VPN'"
+	echo "  Example: aws-client-tunnel.sh 'hbc' 'Scottsdale VPN'"
 	
     exit 1
 fi
