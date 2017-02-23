@@ -23,6 +23,18 @@
 
 ######################## FUNCTIONS ########################
 
+usage(){
+	echo "Usage: $(basename $0) -s <solution directory> -n <vpn name>"
+    echo ""
+	echo "  -h --help         Display help"
+	echo "  -s --solution     Solution folder on jumphost (e.g. solutions/solution_hbc_douglasm)"
+	echo "  -n --vpn          VPN Name (found from i[pf]config or netstat -rn)"
+	echo "  -d --direct       Setup aws-direct client environment routing (NOT IMPLEMENTED YET)"
+	echo ""
+	echo "Example: $(basename $0) -s solutions/solution_hbc_douglasm -n 'Scottsdale VPN'"
+	echo 
+}
+
 route_address(){
 	# Suppress any errors
 	# route add $2 $vpn_ip 2> /dev/null
@@ -46,7 +58,7 @@ route_address(){
 			# Mac Routing
 			# route add $ip gw $vpn_ip 2> /dev/null
 			# sudo route add -host 54.35.189.129 -interface utun0
-			sudo route add -host $1 -interface $vpn_ip &> /dev/null
+			sudo route add -host $1 -interface utun0 &> /dev/null
 		;;
 
 	esac
@@ -62,18 +74,55 @@ route_address(){
 
 ########################### MAIN ##############################
 
-if [[ $# -ne 2 ]]
-then
-    echo "There are not enough parameters."
+# Retrieve these from arguments
+solution=""
+vpn=""
+aws_direct=0
 
-	echo "Must provide the following parameters:"
-	echo "	* solution directory on jumphost"
-	echo "	* VPN network identifier (retrieved from running netstat -nr and review the Interface List)"
-	echo
-	echo "  Example: amadeus-tunnel.sh 'rgrav/solution_ohop_username' 'Scottsdale VPN'"
-
+if ! [[ $# -ge 4 ]]; then
+	echo "Incorrect number of arguments: $#"
+	usage
     exit 1
 fi
+
+# Parse out the arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h | --help)
+            usage
+            exit
+            ;;
+        -s | --solution)
+            solution="$2"
+			shift # shift over because we read out 2 values (parameter + value)
+            ;;
+        -n | --vpn)
+            vpn="$2"
+			shift
+            ;;
+		-d | --direct)
+			aws_direct=1
+			;;
+		--) # End of all options
+			shift
+			break
+			;;
+		-*)
+			echo "Error: Unknown option: $1" >&2
+			exit 1
+			;;
+		*)	# No more options
+			break
+            ;;
+    esac
+    shift
+done
+
+if [[ ( $# == "--help") ||  $# == "-h" ]]; then 
+	usage
+	exit 0
+fi 
+
 echo
 echo "==================================================================================================="
 echo "                                         AMADEUS TUNNEL                                            "
@@ -106,14 +155,13 @@ esac
 
 hostname=$(hostname)
 
-# Testing
-# hostname=testing
-
-solution=$1
-vpn_location=$2
-
-#vpn_location='Scottsdale VPN'
-vpn_ip=$(netsh interface ipv4 show addresses "$vpn_location" | sed -n -e 's/IP Address://p' | sed -e 's/ //g')
+#vpn='Scottsdale VPN'
+if [[ $operating_sys -eq "win" ]]; then
+	# echo "Retrieving IP address from windows..."
+	vpn_ip=$(netsh interface ipv4 show addresses "$vpn" | sed -n -e 's/IP Address://p' | sed -e 's/ //g')
+else
+	vpn_ip="tun0"
+fi
 
 if [[ -z "$vpn_ip" ]]; then
 	echo "Unable to retrieve IP address from $vpn_location, exiting..."
@@ -127,7 +175,8 @@ puppet_master=$(ssh graviton-jump-host -- "cd ~/$solution; graviton config -p ec
 
 # shared.cv2quofa3aoc.us-west-2.rds.amazonaws.com
 # Loop over the list of shared_db ip addresses and route them
-shared_db=("52.27.229.29" "52.40.148.225" "52.42.9.133")
+#shared_db=("52.27.229.29" "52.40.148.225" "52.42.9.133")
+shared_db=()
 shared_db_hostnames=("shared-12c.cv2quofa3aoc.us-west-2.rds.amazonaws.com")
 
 # Add to shared_db array
@@ -140,10 +189,10 @@ done
 
 echo
 echo "==================================================================================================="
-echo "Building AWS Tunneling to $1 via $2"
+echo "Building AWS Tunneling to $solution via $vpn"
 echo "==================================================================================================="
 echo
-echo "$vpn_location address: $vpn_ip"
+echo "$vpn address: $vpn_ip"
 echo
 echo "-----------------------------------"
 echo "Routing shared instances..."
@@ -158,8 +207,9 @@ done
 echo
 echo "Checking if solution running..."
 
-ssh graviton-jump-host -- "cd ~/$solution; graviton status -p ec2" > graviton-status.tmp
-graviton_status=$(cat graviton-status.tmp | sed -n -e 's/Status: //p' | sed s/\ //g | head -1)
+#ssh graviton-jump-host -- "cd ~/$solution; graviton status -p ec2" > graviton-status.tmp
+graviton_status=$(ssh graviton-jump-host -- "cd ~/$solution; graviton status -p ec2" | sed -n -e 's/Status: //p' | sed s/\ //g | head -1)
+#graviton_status=$(cat graviton-status.tmp | sed -n -e 's/Status: //p' | sed s/\ //g | head -1)
 
 echo "Environment status: $graviton_status"
 echo
@@ -168,29 +218,30 @@ if [ "$graviton_status" != "Running" ]; then
 	ssh graviton-jump-host -- "cd ~/$solution; graviton resume -p ec2" > /dev/null
 fi
 
-echo "Running route53_upsert..."
-ssh graviton-jump-host -- "cd ~/$solution; ./resources/scripts/route53_upsert" > route53_upsert.tmp
+echo "Retrieving solution nodes from graviton..."
+ssh graviton-jump-host -- "cd $solution; graviton status -p ec2" | grep -A 4 --group-separator="++++++++" 'graviton.odl.io' | awk 'BEGIN {FS="\n"; RS="+++++\n"} { gsub(/^[ \t]*/,"",$1); gsub(/^[ \t]*Public IP: /,"",$5)} {print $1,$5}' > graviton_status.tmp
+
+# Removing esc sequences that graviton puts in the output
+sed -i 's/.*  //g' graviton_status.tmp
 
 echo
 echo "-----------------------------------"
 echo "Routing addresses..."
 echo "-----------------------------------"
 
-#cat route53_upsert.tmp | sed -n -e '/Public Zone/,/Route53/p' | awk -F" " '{print $0}' | awk '/^[0-9]/' | awk -F" " '{cmd="echo running " $1 " on " $2; system(cmd)}'
 
-# Retrieve the public IP / hostname from route53_upsert
-solution_nodes=$(cat route53_upsert.tmp | sed -n -e '/Public Zone/,/Route53/p' | awk -F" " '{print $0}' | awk '/^[0-9]/' | awk -F" " '{print $1,$2}')
+# Retrieve the public IP / hostname from graviton_status
+solution_nodes=$(cat graviton_status.tmp | awk -F" " '{print $1,$2}')
 
-# Setup routing for ALL hosts retrieved from route53_upsert script
+# Setup routing for ALL hosts retrieved from graviton status
 IFS=$'\n'
 for node in $solution_nodes; do
-	ip=$(echo "$node" | cut -d' ' -f1)
-	hostname=$(echo "$node" | cut -d' ' -f2)
-
+	hostname=$(echo "$node" | cut -d' ' -f1)
+	ip=$(echo "$node" | cut -d' ' -f2)
+	
 	route_address $ip $hostname
 done
 
-rm route53_upsert.tmp
-# graviton-status.tmp
+rm graviton_status.tmp
 
 ########################### END MAIN ##############################

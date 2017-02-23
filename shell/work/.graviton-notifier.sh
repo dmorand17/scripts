@@ -18,11 +18,14 @@ EOF
 }
 
 graviton_monitor(){
+    SECONDS=0
+    graviton_pid=$1
+
     echo "Started @ $(date)"
-    echo "Monitoring $graviton_pid"
+    echo "Monitoring graviton deploy process $graviton_pid"
 
     # checking if graviton running
-    while kill -0 $pid 2> /dev/null; do
+    while kill -0 $graviton_pid 2> /dev/null; do
         # graviton running
         sleep 5s
     done 
@@ -38,8 +41,11 @@ graviton_monitor(){
         priority=1
     fi
     
+    duration=$SECONDS
+    duration_msg="$(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
+
     #message=$(echo -e "$cur_dir [status]: $graviton_status \ncheck log for additional details.")
-    message=$(echo -e "$cur_dir [status]: $graviton_status \nCheck log for more details")
+    message=$(echo -e "[solution]: $cur_dir \n[status]: $graviton_status \n\n$duration_msg \nCheck log for more details")
     echo $message
     
     notify_pushover "Graviton Deploy Finished" $priority "$message"
@@ -47,6 +53,4 @@ graviton_monitor(){
     echo "Notification sent"
 }
 
-graviton_pid=$1
-
-graviton_monitor $graviton_pid
+graviton_monitor $1
