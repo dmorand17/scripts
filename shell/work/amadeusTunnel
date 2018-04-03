@@ -1,0 +1,311 @@
+#!/bin/bash
+
+#
+# Description
+# -------------------------------------------------------------------------------
+# This script performs the following actions:
+#   * Resume solution (if necessary)
+#   * Route all nodes returned from graviton status through the VPN connection
+#
+# Platforms:
+#   * Windows (babun, running as administrator)
+#   * Mac (NOT VERIFIED)
+#
+# VPN(s) verified:
+#   * Boston
+#   * Scottsdale
+#
+# Note: Refer to ITS-51997 if the VPN routing doesn't allow access to the AWS Dev resources.  This could be an issue with the VPN.
+#
+# Author: Doug Morand
+
+# Ensure script exits if any task returns a non-zero
+# set -e
+
+######################## FUNCTIONS ########################
+
+usage(){
+	echo "Usage: $(basename $0) [-h] -s <solution directory> -n <vpn name> -j <jumphost> [--hosts hosts] [--debug]"
+    echo ""
+	echo "  -h --help         Display help"
+	echo "  -s --solution     Solution folder on jumphost (e.g. solutions/solution_hbc_douglasm)"
+	echo "  -n --vpn          "
+	echo "	    [Windows]: VPN Name (found from i[pf]config or netstat -rn)"
+	echo "	    [Mac]:     Gateway Name (vpn gateway found in ifconfig) defaults to utun1"
+	echo "  -j --jumphost     jumphost to use.  Defaults to graviton-jump-host"
+	echo "  --hosts           Space delimited list of additional hosts to route"
+	echo "  --debug           Turn on debugging"
+	echo ""
+	echo "Example(s):"
+	echo "    Windows: $(basename $0) -s solutions/solution_hbc_douglasm -n 'Scottsdale VPN' -j graviton-jump-host-scottsdale --hosts 'terminology.term.prod.us-west-2.orionhealth-saas-svcs.com jump1.us-west-2.orionhealth-saas-mgmt.com'"
+	echo "    Mac: sudo $(basename $0) -s solutions/solution_hbc_douglasm -n 'utun1' -j graviton-jump-host-scottsdale --hosts 'terminology.term.prod.us-west-2.orionhealth-saas-svcs.com jump1.us-west-2.orionhealth-saas-mgmt.com'"
+}
+
+route_address(){
+	# Suppress any errors
+	# route add $2 $vpn_ip 2> /dev/null
+
+	echo "Routing $1 [$2] -> $vpn_ip"
+
+	case "$operating_sys" in
+		win)
+			# Windows Routing
+			route add $1 $vpn_ip &> /dev/null
+		;;
+		nix)
+			# Linux Routing
+			# route add $ip gw $vpn_ip 2> /dev/null
+			# sudo ip route add 99.99.99.99 dev eth0
+			# ip route add $ip 255.255.255.255 $vpn_ip 2> /dev/null
+			# sudo ip route add $1 dev utun1
+			sudo ip route add $1 dev $vpn_ip &> /dev/null
+		;;
+		mac)
+			# Mac Routing
+			# route add $ip gw $vpn_ip 2> /dev/null
+			# sudo route add -host 54.35.189.129 -interface utun0
+			# sudo route add -net $1 -interface utun0 &> /dev/null
+			# sudo route add $1 $gateway &> /dev/null
+			sudo route add -net $1 -interface $vpn_ip &> /dev/null
+		;;
+	esac
+	
+	if [ "$?" -ne "0" ]; then
+		echo -e "ERROR: Unable to route $1 -> $vpn_ip  \n\tPossible reasons include: 'Terminal is NOT running with Admin privilege OR Route already established'"
+	fi
+}
+######################## END FUNCTIONS ########################
+
+
+########################### MAIN ##############################
+
+# Retrieve these from arguments
+solution=""
+vpn=""
+hosts=""
+jumphost="graviton-jump-host"
+gateway="utun1"
+debug=0
+
+if ! [[ $# -ge 2 ]]; then
+	echo "Incorrect number of arguments: $#"
+	usage
+    exit 1
+fi
+
+# Parse out the arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h | --help)
+            usage
+            exit
+            ;;
+        -s | --solution)
+            solution="$2"
+			shift # shift over because we read out 2 values (parameter + value)
+            ;;
+        -n | --vpn)
+            vpn="$2"
+			shift
+            ;;
+		-j | --jumphost)
+			jumphost="$2"
+			shift
+			;;
+		--hosts)
+			hosts="$2"
+			shift
+			;;
+		--debug)
+			debug=1
+			shift
+			;;
+		--) # End of all options
+			shift
+			break
+			;;
+		-*)
+			echo "Error: Unknown option: $1" >&2
+			exit 1
+			;;
+		*)	# No more options
+			break
+            ;;
+    esac
+    shift
+done
+
+if [[ ( $# == "--help") ||  $# == "-h" ]]; then
+	usage
+	exit 0
+fi
+
+echo
+echo "==================================================================================================="
+echo "                                         AMADEUS TUNNEL                                            "
+echo "==================================================================================================="
+echo
+#echo -n "Operating system: "
+
+# Additional logic to route based on OS
+case "$(uname -s)" in
+   Darwin)
+     #echo 'Mac OS X'
+	 operating_sys='mac'
+     ;;
+   Linux)
+     #echo 'Linux'
+	 operating_sys='nix'
+     ;;
+   CYGWIN*|MINGW*|MSYS*)
+     #echo 'MS Windows'
+	 operating_sys='win'
+     ;;
+   *)
+     #echo 'other OS'
+	 echo 'Unable to determine Operating system, exiting...'
+	 exit 1
+     ;;
+esac
+
+hostname=$(hostname)
+
+if [[ $operating_sys == "win" ]]; then
+	vpn_ip=$(netsh interface ipv4 show addresses "$vpn" | sed -n -e 's/IP Address://p' | sed -e 's/ //g')
+
+	if [[ -z "$vpn_ip" ]]; then
+		echo "Unable to retrieve IP address from $vpn, exiting..."
+		exit 1
+	fi
+fi
+
+if [[ $operating_sys == "mac" ]]; then
+	# Use vpn argument if passed, otherwise use gateway (utun1)
+	if [[ ! "$vpn" == "" ]]; then
+		gateway=$vpn
+	fi
+	
+	# Either pull the IP from the vpn passed (e.g. utun1)
+	vpn_ip=$(ifconfig $gateway | awk '$1 == "inet" {print $2}')
+	
+	if [[ -z "$vpn_ip" ]]; then
+		echo "Unable to retrieve IP address from $vpn, exiting..."
+		exit 1
+	fi
+fi
+
+if [[ $operating_sys == "nix" ]]; then
+    vpn_ip=$(route | grep -m1 '^172.2' | grep -o '[^ ]*$')
+fi
+
+# Dynamically retrieves puppet master from the graviton configuration for the deployment
+puppet_master=$(ssh $jumphost -- "cd ~/$solution; graviton config | sed -n 's/^.*puppet.master.address=//p'")
+if [[ -z "$puppet_master" ]]; then
+	echo "Puppet master not found.  Check that the solution directory is correct..."
+	exit 1
+fi
+
+additional_ip=()
+additional_hostnames=("shared-12c.cv2quofa3aoc.us-west-2.rds.amazonaws.com")
+
+# Add hosts to be routed
+additional_hostnames+=($hosts)
+
+# Add to additional_ip array
+echo "Resolving IP addresses..."
+for i in "${additional_hostnames[@]}"; do
+	if [[ $operating_sys == "win" ]]; then
+		ip=$(nslookup $i 2>/dev/null | sed -nr '/Name/,+1s|Address(es)?: *||p')
+	else
+		ip=$(dig +short $i | grep -o -m1 '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+	fi
+	echo "$i -> $ip"
+	additional_ip+=($ip)
+done
+
+echo
+echo "==================================================================================================="
+echo "Building AWS Tunneling to $solution"
+echo "==================================================================================================="
+if [[ $operating_sys == "win" ]]; then
+	echo "$vpn -> $vpn_ip"
+	echo
+fi
+echo "-----------------------------------"
+echo "Routing shared instances..."
+echo "-----------------------------------"
+route_address $puppet_master puppet_master
+
+for ip in "${additional_ip[@]}"; do
+	route_address $ip "additional ip"
+done
+
+echo
+echo "Retrieving solution status from Graviton..."
+
+graviton_status=$(ssh $jumphost -- "cd ~/$solution; graviton status" | sed -n -e 's/Status: //p' | sed s/\ //g | head -1)
+if [ $? -ne 0 ]; then
+	"Unable to determine graviton status, exiting..."
+	exit 1
+fi
+
+echo "Environment status: $graviton_status"
+echo
+if [ "$graviton_status" != "Running" ]; then
+	echo "Running graviton resume..."
+	ssh $jumphost -- "cd ~/$solution; graviton resume" > /dev/null
+fi
+
+# Retrieve the public IP / hostname from graviton_status
+#	* Call graviton status to retrieve the running instances (host + ip)
+#	* Grep the results to remove unwanted text from graviton status -pec2 results
+#	* Iterate over each group and perform the following:
+#		* trim all beginning whitespace
+#		* Retrieve field 1 (host)
+#		* Remove "Public IP: " and retrieve ip 
+#
+# 	Example group
+#  rhapsody-ohop1.hbc-douglasm-graviton-jump-host-auckland.graviton.odl.io
+#    Provisioner Details:
+#      Status: Running
+#    Network Addresses:
+#      Public IP: 52.37.198.242
+
+# Example output (graviton_status.tmp)
+#backend1.hbc-review-graviton-jump-host-auckland.graviton.odl.io 34.211.202.63
+#dev-cassandra1.hbc-review-graviton-jump-host-auckland.graviton.odl.io 52.25.91.69
+#empi1.hbc-review-graviton-jump-host-auckland.graviton.odl.io 52.10.59.249
+#frontend1.hbc-review-graviton-jump-host-auckland.graviton.odl.io 34.210.133.84
+#haproxy1.hbc-review-graviton-jump-host-auckland.graviton.odl.io 34.212.45.88
+#rhapsody-ohop1.hbc-review-graviton-jump-host-auckland.graviton.odl.io 52.41.9.54
+
+ssh $jumphost -- "cd ~/$solution; graviton status | 
+				grep -A 4 --group-separator=\"\" 'graviton.odl.io' | 
+				awk 'BEGIN {FS=\"\n\"; RS=\"\"} {gsub(/.*  /,\"\",\$1); gsub(/^[ \t]*Public IP: /,\"\",\$5)} {print \$1,\$5}'" > graviton_status.tmp
+
+if [[ $debug -eq 1 ]]; then
+	echo "************************************************"
+	cat graviton_status.tmp
+	echo "************************************************"
+fi
+
+echo "-----------------------------------"
+echo "Routing addresses..."
+echo "-----------------------------------"
+
+solution_nodes=$(awk -F" " '{print $1,$2}' graviton_status.tmp)
+
+# Setup routing for ALL hosts retrieved from graviton status
+IFS=$'\n'
+for node in $solution_nodes; do
+	hostname=$(echo "$node" | cut -d' ' -f1)
+	ip=$(echo "$node" | cut -d' ' -f2)
+
+	route_address $ip $hostname
+done
+
+echo
+echo -n "Cleaning up temp files..."
+rm graviton_status.tmp*
+echo "done"
+########################### END MAIN ##############################
