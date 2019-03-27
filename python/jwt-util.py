@@ -34,6 +34,8 @@ def getThumbprintFromHashLib():
     fingerprint_bytes_enc = base64.urlsafe_b64encode(hash_object.digest())
     print("SHA1 (encoded): {}".format(fingerprint_bytes_enc.decode('utf-8').rstrip('=')))
     #print("SHA1 (encoded)",fingerprint_bytes_enc.decode('utf-8'))
+
+    return fingerprint_enc
     ###
     # END hashlib library
     ###
@@ -92,10 +94,11 @@ payload = {
 # Public key (RSA) can be retrieved via openssl
 # openssl rsa -in key.pem -pubout > key.pub
 
+fingerprint_enc = getThumbprintFromHashLib()
 # Encode
 privatekey_file = "/home/dougie/onedrive/orion/security/jwt/key.decrypted.pem"
-token = jwt.encode(payload, key=open(privatekey_file,"r").read(), algorithm='RS256', headers={"x5t":x5t})
-# token = jwt.encode(payload, key=privf.read(), algorithm='RS256', headers={"x5t":fingerprint_enc.decode('utf-8')})
+# token = jwt.encode(payload, key=open(privatekey_file,"r").read(), algorithm='RS256', headers={"x5t":x5t})
+token = jwt.encode(payload, key=open(privatekey_file,"r").read(), algorithm='RS256', headers={"x5t":fingerprint_enc.decode('utf-8')})
 print("token -> {}".format(token))
     
 
