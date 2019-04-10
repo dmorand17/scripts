@@ -9,6 +9,8 @@ import sys
 import base64
 import hashlib
 import binascii
+import argparse
+import json
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Build JWT token')
@@ -78,11 +80,20 @@ def getThumbprintFromx509():
 def main():
     pass
 
-payload = {
-    "iss": "Orion Health",
-    "sub": "level1.hzn",
-    "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=15) # valid for 15 minutes
-}
+# payload = {
+#     "iss": "Orion Health",
+#     "sub": "level1.hzn"
+#     # "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=15) # valid for 15 minutes
+# }
+
+parser = argparse.ArgumentParser(description='Build a JWT token')
+parser.add_argument('-p', '--payload', help='Payload json file', required=True, action='store')
+args = parser.parse_args()
+
+
+payload = json.loads(open(args.payload,"r").read())
+print("payload {}".format(payload))
+payload["exp"] = datetime.datetime.utcnow() + datetime.timedelta(minutes=15) # valid for 15 minutes
 
 # Handle RS256
 # Build a new private key
