@@ -32,7 +32,7 @@ def getThumbprintFromHashLib():
     fingerprint_enc = base64.b64encode(fingerprint.encode())
     print("SHA1 (encoded wso2): {}".format(fingerprint_enc.decode('utf-8')))
 
-    #    base64url-encoded SHA-1 thumbprint (a.k.a. digest) of the DER encoding of an X.509 certificate
+    #  base64url-encoded SHA-1 thumbprint (a.k.a. digest) of the DER encoding of an X.509 certificate
     fingerprint_bytes_enc = base64.urlsafe_b64encode(hash_object.digest())
     print("SHA1 (encoded): {}".format(fingerprint_bytes_enc.decode('utf-8').rstrip('=')))
     #print("SHA1 (encoded)",fingerprint_bytes_enc.decode('utf-8'))
@@ -93,7 +93,8 @@ args = parser.parse_args()
 
 payload = json.loads(open(args.payload,"r").read())
 print("payload {}".format(payload))
-payload["exp"] = datetime.datetime.utcnow() + datetime.timedelta(minutes=15) # valid for 15 minutes
+payload["exp"] = datetime.datetime.utcnow() + datetime.timedelta(minutes=30) # valid for 30 minutes
+payload["iat"] = datetime.datetime.utcnow()
 
 # Handle RS256
 # Build a new private key

@@ -1,0 +1,6 @@
+name|gender|dob
+Doug|M|02-21-18
+Joe|M
+Billy|M|09-12-41
+Jane|F|02-02-76
+Mark|M
