@@ -9,5 +9,5 @@ echo "---------------------------"
 for i in $@;
 do
 	echo "updating $i"
-	chmod +rx -R $i
+	chmod 777 -R $i
 done

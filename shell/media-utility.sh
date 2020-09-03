@@ -12,5 +12,7 @@ logfilename=${scriptname%.*}
 
 logger "Updating permissions on mybook and toshiba5tb tv..."
 
-/home/dougie/scripts/change_perms.sh "/home/dougie/mybook/sorted/tv"
-/home/dougie/scripts/change_perms.sh "/home/dougie/toshiba5tb/media/tv"
+/home/dougie/scripts/change_perms.sh "/home/dougie/toshiba5tb/media/"
+/home/dougie/scripts/change_perms.sh "/home/dougie/mytoshiba1/media/"
+/home/dougie/scripts/change_perms.sh "/home/dougie/myrepo/movies/"
+/home/dougie/scripts/change_perms.sh "/home/dougie/buffalo/media/"
