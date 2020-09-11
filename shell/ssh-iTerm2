@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+DEFAULT=`hostname`
+function exe() { echo "\$ $@" ; "$@" ; }
+
+iterm2_set_user_var () {
+  printf "\033]1337;SetUserVar=%s=%s\007" "$1" $(printf "%s" "$2" | base64 | tr -d '\n')
+  echo -e "\033]6;1;bg;red;brightness;251\a"
+  echo -e "\033]6;1;bg;green;brightness;107\a"
+  echo -e "\033]6;1;bg;blue;brightness;98\a"
+}
+
+# Set the user badge
+function set_badge() {
+    iterm2_set_user_var badge $1
+}
+
+function on_exit() {
+  iterm2_set_user_var badge "$DEFAULT"
+  echo -e "\033]6;1;bg;*;default\a"
+
+}
+trap on_exit EXIT
+
+set_badge "$@"
+
+exe /usr/bin/ssh "$@"
