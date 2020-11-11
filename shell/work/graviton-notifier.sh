@@ -9,8 +9,8 @@ EOF
     fi
 
     curl -s \
-    --form-string "token=ac7xvh2zrrmiv6nxqoxgjerm1hsian" \
-    --form-string "user=u71pdbtm2a917erqqijm6mkbror2ht" \
+    --form-string "token=$TOKEN" \
+    --form-string "user=$USER" \
     --form-string "title=$1" \
     --form-string "priority=$2" \
     --form-string "message=$3" \
