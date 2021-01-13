@@ -1,0 +1,85 @@
+#!/bin/bash
+set -eo pipefail
+
+exe() { echo -e "\$ $@\n" ; "$@" ; }
+
+help() {
+   # Display Help
+    echo "Retrieves message summary (and optionally messages) based on search criteria"
+    echo
+    echo "Usage: $0 [-r] [-m] [-g <glob>] -s <search_string>"
+    echo "options:"
+    echo "  r                      Print results in descending order"
+    echo "  m                      Print out the messaages along with the summary"
+    echo "  g <glob>               glob to use for ripgrep search (defaults to ALL hl7 messages -> **/*.hl7)"
+    echo "  s <search_string>      search criteria"
+    echo
+    echo "      Search for all ORU messages for 123456"
+    echo "      Example: hl7-search -g \"**/*ORU*.hl7\" -s 123456"
+}
+
+while getopts "hrmg:s:" opt; do
+    case "${opt}" in
+        g) GLOB=${OPTARG} ;;
+	    s) SEARCH=${OPTARG} ;;
+        m) MESSAGE="true" ;;
+        r) REVERSE="true" ;;
+        h) help
+            exit 0
+            ;; # Print usage for invalid param
+        ?) help ;; # Print usage for invalid param
+    esac
+done
+
+if [[ x"$SEARCH" = x ]]; then
+    printf "\033[31msearch (-s) is required!\033[0m\n\n"
+    help
+    exit 1
+fi
+
+DEFAULT_GLOB="**/*.hl7"
+if [[ x"$GLOB" = x ]]; then
+    GLOB=$DEFAULT_GLOB
+fi
+
+# Define ripgrep options
+rg_opts+=(--glob "${GLOB}") # -g
+rg_opts+=(--files-with-matches) # -l
+
+# Define sort options
+sort_opts+=(-t'|' "-n")
+if [[ x"$REVERSE" != x ]]; then
+    sort_opts+=("-r")
+fi
+
+# Find all messages
+# AWK script will parse out the following details from the hl7 filenames:
+#   * Date/time from filename
+#   * Message type
+#   * Full path of filename
+#
+# Example: dev-2020-11-20/messages/raw/RDE_O11/20201123110016_RDE_O11_20201123060007_59578.hl7
+#   datetime: 20201123060007
+#   messagetype: RDE_O11
+#   path: dev-2020-11-20/messages/raw/RDE_O11/20201123110016_RDE_O11_20201123060007_59578.hl7
+
+msg_details=$(rg ${SEARCH} "${rg_opts[@]}" \
+| awk 'BEGIN{FS="/"; OFS=";"}; { match($NF,/([0-9]{14})_[0-9]+\.hl7/,a); match($NF,/_(\w{3}_\w{3})_.+\.hl7/,b); print a[1],b[1],$0 }' \
+| sort "${sort_opts[@]}")
+
+
+printf "%-15s | %-15s | %100s\n" "DATETIME" "MESSAGE_TYPE" "FILENAME"
+printf "%-15s | %-15s | %100s\n" "--------" "------------" "--------"
+for d in ${msg_details[@]}; do
+    fields=($(echo $d | tr ";" "\n"))
+    printf "%-15s | %-15s | %100s\n" "${fields[0]}" "${fields[1]}" "${fields[2]}"
+done
+
+if [[ x"$MESSAGE" != x ]]; then
+    printf ";;;;;;;;;;\n"
+    # if outputting messages continue else end command
+    for d in ${msg_details[@]}; do
+        fields=($(echo $d | tr ";" "\n"))
+        cat ${fields[2]} ; echo -e '\n'
+    done
+fi
