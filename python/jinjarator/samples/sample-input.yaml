@@ -1,0 +1,11 @@
+---
+users:
+  - name: Hugo First
+    role: Administrator
+    username: hugof
+  - name: Rod Knee
+    role: Practitioner
+    username: robk
+  - name: Liz Erd
+    role: Privacy Officer
+    username: lize
