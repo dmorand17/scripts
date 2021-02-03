@@ -36,11 +36,11 @@ class style():
 def header_decorator(func):
     # Decorator to print messages before/after calling function
     def wrapper():
-        print(f"\n{style.GREEN}Starting [{func.__name__}]{style.RESET}")
+        print(f"\n{style.BLUE}Starting [{func.__name__}]{style.RESET}")
         start = time.time()
         func()
         end = time.time()
-        print(f"{style.GREEN}Finished [{func.__name__}]{style.RESET} in {end-start:.4f} seconds \n")
+        print(f"{style.BLUE}Finished [{func.__name__}]{style.RESET} in {end-start:.4f} seconds \n")
     return wrapper
 
 def is_blank(str):
@@ -55,13 +55,16 @@ def print_json(dict_str):
 def error(msg):
     print(f"{style.RED}{msg}{style.RESET}") 
 
-def dateformat(dt, input_format=None, fmt=None):
-    default_fmt = "%Y%m%d"
-    if type(dt) == str:
-        date_parsed = datetime.strptime(dt,input_format)    
-        return date_parsed.strftime(fmt or default_fmt)
-    if type(dt) == datetime:
-        return dt.strftime(fmt or default_fmt)
+"""
+    Jinja filters to be used in templates
+"""
+def dateformat(value, input_format=None, output_format=None):
+    DEFAULT_FORMAT = "%Y%m%d"
+    if type(value) == str:
+        date_parsed = datetime.strptime(value,input_format)
+        return date_parsed.strftime(output_format or DEFAULT_FORMAT)
+    if type(value) == datetime:
+        return value.strftime(output_format or DEFAULT_FORMAT)
 
 def jinja_filters():
     return {
@@ -70,8 +73,8 @@ def jinja_filters():
 
 @header_decorator
 def yaml_to_jinja():
-    templateFilePath = jinja2.FileSystemLoader('./')
-    jEnv = jinja2.Environment(loader=templateFilePath,trim_blocks=args.trim_blocks)
+    templateLoader = jinja2.FileSystemLoader(searchpath='./')
+    jEnv = jinja2.Environment(loader=templateLoader,trim_blocks=args.trim_blocks)
     jEnv.filters.update(jinja_filters())
 
     jTemplate = jEnv.get_template(args.template)
@@ -86,7 +89,7 @@ def yaml_to_jinja():
     # write output to a file
     with open(args.output,"w") as f:
         f.write(output)
-    # logger.info(f"{args.output} created!")
+    print(f"{style.YELLOW}{args.output}{style.RESET} created!")
 
 def main():
     yaml_to_jinja()

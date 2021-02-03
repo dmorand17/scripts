@@ -1,3 +1,3 @@
 {%- for user in users -%}
-[{{'20210110' | dateformat(input_format='%Y%m%d',fmt='%B %Y')}}] {{ user.name }} - {{user.username}} - {{user.role}}
+[{{'20210110' | dateformat(input_format='%Y%m%d',output_format='%B %Y')}}] {{ user.name }} - {{user.username}} - {{user.role}}
 {% endfor %}
