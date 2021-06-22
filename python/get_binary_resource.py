@@ -59,7 +59,7 @@ def get_token():
 #   - strip out the 'hl7-storage' and create a .hl7 file
 # data (base64 encoded)
 
-# curl -s -H 'Authorization: Bearer Sec-GhWlp1p8zyzER4kvvSiHkoCwtdw-ceS' https://api.dev.tju.commure.com/api/v1/r4/Binary/hl7-storage.hl7-receiver-6789.0.1595427485632-74609 | jq '.data' -r | base64 -d
+# curl -s -H 'Authorization: Bearer {{token}}' https://localhost/api/v1/r4/Binary/1595427485632-74609 | jq '.data' -r | base64 -d
 
 # 1. Get Auth Token to query resources (Binary especially)
 # 2. Make subsequent call to retrieve all resources that messages should be downloaded

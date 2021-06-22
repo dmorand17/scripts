@@ -61,7 +61,7 @@ def error(msg):
 def dateformat(value, input_format=None, output_format=None):
     DEFAULT_FORMAT = "%Y%m%d"
     if type(value) == str:
-        date_parsed = datetime.strptime(value,input_format)
+        date_parsed = datetime.strptime(value,input_format)    
         return date_parsed.strftime(output_format or DEFAULT_FORMAT)
     if type(value) == datetime:
         return value.strftime(output_format or DEFAULT_FORMAT)
