@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+
+import subprocess
+import json
+import os
+import re
+import sys
+import argparse
+import traceback
+
+
+def curl_for_token(BASIC_AUTH_USERNAME_PASSWORD, AUTH_ENDPOINT):
+    curl_argv = [ 'curl', '-sSL', '-k', '--data', 'grant_type=client_credentials',
+                  '-H', "Authorization: Basic " + BASIC_AUTH_USERNAME_PASSWORD,
+                  '-H', "Content-Type: application/x-www-form-urlencoded",
+                  AUTH_ENDPOINT ]
+    curl = subprocess.Popen(curl_argv, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (out, err) = curl.communicate()
+    return json.loads(out)['access_token']
+
+
+if __name__ == "__main__":
+    tag_value_re = re.compile('^\s*export\s+([\w_]+)=(.*)$')
+    tennants = {}
+    fileext = ".dotfile"
+    for root_path, dis, files in os.walk('/home/PHI/.tennants'):
+        for dotfile in files:
+            if dotfile.endswith(fileext):
+                with open(os.path.join(root_path, dotfile)) as fd:
+                    values = {}
+                    for line in fd.readlines():
+                        found = tag_value_re.match(line)
+                        if found:
+                            tag = found.group(1).strip()
+                            value = found.group(2).strip()
+                            values[tag] = value
+                            pass
+                        pass
+                    pass
+                tennants[dotfile[:-len(fileext)]] = values
+                pass
+            pass
+        pass
+
+    BASIC_AUTH_USERNAME_PASSWORD = os.environ.get('BASIC_AUTH_USERNAME_PASSWORD')
+    AUTH_ENDPOINT = os.environ.get('AUTH_ENDPOINT')
+
+    def list_tennants():
+        print(" ".join(tennants.keys()))
+        pass
+
+    parser = argparse.ArgumentParser(usage="get_bearer_token [options]")
+    parser.set_defaults(func=list_tennants)
+
+    parser.add_argument('-t', dest='tennant', help='Tennant name')
+    parser.add_argument('-l', dest='list_tennants', help='List tennants', action='store_true')
+
+    tennant = None
+    args = parser.parse_args(sys.argv[1:])
+        
+    if args.list_tennants:
+        list_tennants()
+        sys.exit(0)
+        pass
+
+    tennant_name = args.tennant
+    if tennant_name:
+        values = tennants.get(tennant_name)
+        if values is None:
+            print(f'Tennant "{tennant_name}" does not exist. Valid tennants are ' + ",".join(tennants.keys()))
+            sys.exit(1)
+            pass
+        BASIC_AUTH_USERNAME_PASSWORD = values['BASIC_AUTH_USERNAME_PASSWORD']
+        AUTH_ENDPOINT = values['AUTH_ENDPOINT']
+        token = curl_for_token(BASIC_AUTH_USERNAME_PASSWORD, AUTH_ENDPOINT)
+        print(token)
+        xsel_argv = ['xsel', '-b']
+        xsel = subprocess.Popen(xsel_argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+        (out, err) = xsel.communicate(token.encode('utf-8'))
+        pass
+    else:
+        args.func()
+        pass
+    pass
+

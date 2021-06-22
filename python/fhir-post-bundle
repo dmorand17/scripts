@@ -1,0 +1,90 @@
+#!/bin/bash
+
+set -eo pipefail
+
+SCRIPT_DIR=$(dirname "$0")
+exe() { echo -e "\$ $@\n" ; "$@" ; }
+
+help() {
+
+   # Display Help
+    echo "POST a file or directory of file bundles to a FHIR endpoint"
+    echo
+    echo "Usage: $0 [-v] -u <url> -t <token> [-f <file>] [-d <directory>]"
+    echo "options:"
+    echo "  v                      Verbose output"
+    echo "  u                      URL to POST bundle.  Defaults to https://localhost:8000/api/v1/r4"
+    echo "  t                      Bearer token required by endpoint"
+    echo "  f <file>               File containing bundle to POST"
+    echo "  d <directory>          Directory containing bundles to POST"
+    echo
+    echo "Example: ./fhir-post-bundle -t {{TOKEN}} -f cleanup/identifier00.json"
+
+}
+
+post() {
+    if [[ x"$VERBOSE" != x ]]; then
+        printf "POSTing $1\n"
+        exe curl -XPOST "${curl_opts[@]}" \
+            -i \
+            --data "@$1" $URL
+        printf "\n\n"
+    else
+        response=$(curl -XPOST "${curl_opts[@]}" \
+                --data "@${1}" \
+                -o /dev/null \
+                -w '%{http_code}' $URL)
+        case "$response" in
+                200) printf "%-110s | %-8s | %-20s\n" $1 POST "$response OK";;
+                400) printf "%-110s | %-8s | %-20s\n" $1 POST "$response Not found";;
+                405) printf "%-110s | %-8s | %-20s\n" $1 POST "$response Not Allowed";;
+                *) printf "%-110s | %-8s | %-20s\n" $1 POST "$response Exception Occurred";;
+        esac    
+    fi
+}
+
+while getopts u:d:f:t:v opt; do
+    case "${opt}" in
+        u) URL=${OPTARG} ;;
+        t) TOKEN=${OPTARG} ;;
+        f) FILE=${OPTARG} ;;
+        d) DIRECTORY=${OPTARG} ;;
+        v) VERBOSE="true" ;;
+        ?) help ;; # Print usage for invalid param
+    esac
+done
+
+if [[ x"$URL" = x ]]; then
+    URL="https://localhost:8000/api/v1/r4"
+fi
+
+if [[ x"$DIRECTORY" = x && x"$FILE" = x ]]; then
+    printf "\033[0;31m[ERROR]\033[0m DIRECTORY (-d) or FILE (-f) must be supplied\n\n"
+    help
+    exit 1
+fi
+
+if [[ x"$TOKEN" = x ]]; then
+    echo "TOKEN must be set (e.g. -t <TOKEN>)"
+    help
+    exit 1
+fi
+
+# Set cURL options
+curl_opts+=(--silent --show-error --location --insecure ) #-sSLk
+curl_opts+=(--header "Authorization: Bearer ${TOKEN}")
+curl_opts+=(--header "Content-Type: application/json")
+
+if [[ x"$VERBOSE" = x ]]; then
+    printf "%-110s | %-8s | %-20s\n" "FILE" "METHOD" "RESULT"
+    printf "%-110s | %-8s | %-20s\n" "-----------" ""--------" ""-----------"
+fi
+
+if [[ x"$DIRECTORY" != x ]]; then
+    for f in $(find ${DIRECTORY} -type f | sort); do
+        post $f
+        sleep 3s
+    done
+else 
+    post $FILE
+fi
